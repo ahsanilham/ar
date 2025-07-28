@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MindAR Image Tracking</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mind-ar/1.2.2/mindar-image-three.prod.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            background: #000;
+            overflow: hidden;
+        }
+        
+        #container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        #controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 1000;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 10px;
+            color: white;
+        }
+        
+        #fileInput {
+            margin: 10px 0;
+            padding: 8px;
+            border: none;
+            border-radius: 5px;
+            background: #333;
+            color: white;
+        }
+        
+        #startButton, #stopButton {
+            margin: 5px;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        
+        #startButton {
+            background: #4CAF50;
+            color: white;
+        }
+        
+        #stopButton {
+            background: #f44336;
+            color: white;
+        }
+        
+        #status {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            z-index: 1000;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            border-radius: 5px;
+            color: white;
+            font-size: 14px;
+        }
+        
+        #loadingOverlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            font-size: 18px;
+            z-index: 2000;
+        }
+        
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top: 4px solid white;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin-right: 20px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .hidden {
+            display: none !important;
+        }
+        
+        #instructions {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: white;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 30px;
+            border-radius: 15px;
+            max-width: 400px;
+            z-index: 1500;
+        }
+        
+        #instructions h2 {
+            margin-top: 0;
+            color: #4CAF50;
+        }
+        
+        #instructions ul {
+            text-align: left;
+            margin: 20px 0;
+        }
+        
+        #instructions li {
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="loadingOverlay" class="hidden">
+            <div class="spinner"></div>
+            <div>Memuat MindAR...</div>
+        </div>
+        
+        <div id="instructions">
+            <h2>🎯 MindAR Image Tracking</h2>
+            <p><strong>Cara Penggunaan:</strong></p>
+            <ul>
+                <li>Upload file <code>targets.mind</code> Anda</li>
+                <li>Klik "Mulai AR" untuk memulai tracking</li>
+                <li>Arahkan kamera ke gambar target</li>
+                <li>Objek 3D akan muncul di atas target</li>
+            </ul>
+            <p><em>Pastikan lighting cukup dan target gambar terlihat jelas.</em></p>
+            <button onclick="hideInstructions()" style="background: #4CAF50; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; margin-top: 15px;">Mengerti</button>
+        </div>
+        
+        <div id="controls">
+            <h3 style="margin: 0 0 10px 0; color: #4CAF50;">🔧 Kontrol AR</h3>
+            <div>
+                <label for="fileInput" style="display: block; margin-bottom: 5px;">Upload targets.mind:</label>
+                <input type="file" id="fileInput" accept=".mind" />
+            </div>
+            <div>
+                <button id="startButton" onclick="startAR()">🚀 Mulai AR</button>
+                <button id="stopButton" onclick="stopAR()" style="display: none;">⏹️ Stop AR</button>
+            </div>
+        </div>
+        
+        <div id="status">
+            <div>Status: <span id="statusText">Siap - Upload file targets.mind</span></div>
+            <div>Target Terdeteksi: <span id="targetCount">0</span></div>
+        </div>
+    </div>
+
+    <script>
+        let mindarThree = null;
+        let scene, camera, renderer;
+        let targetObjects = [];
+        let isARRunning = false;
+        let targetsFile = null;
+
+        // Initialize Three.js scene
+        function initScene() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(
+                70,
+                window.innerWidth / window.innerHeight,
+                0.01,
+                1000
+            );
+            
+            renderer = new THREE.WebGLRenderer({ 
+                antialias: true,
+                alpha: true 
+            });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setClearColor(0x000000, 0);
+            
+            // Add lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+            
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(0, 10, 5);
+            scene.add(directionalLight);
+        }
+
+        // Create 3D objects for each target
+        function createTargetObjects(numTargets) {
+            targetObjects = [];
+            
+            for (let i = 0; i < numTargets; i++) {
+                const anchor = mindarThree.addAnchor(i);
+                
+                // Create different objects for each target
+                let geometry, material, mesh;
+                
+                switch (i % 4) {
+                    case 0:
+                        // Rotating cube
+                        geometry = new THREE.BoxGeometry(1, 1, 1);
+                        material = new THREE.MeshPhongMaterial({ 
+                            color: 0xff4444,
+                            transparent: true,
+                            opacity: 0.8
+                        });
+                        mesh = new THREE.Mesh(geometry, material);
+                        break;
+                        
+                    case 1:
+                        // Sphere
+                        geometry = new THREE.SphereGeometry(0.6, 32, 32);
+                        material = new THREE.MeshPhongMaterial({ 
+                            color: 0x44ff44,
+                            transparent: true,
+                            opacity: 0.8
+                        });
+                        mesh = new THREE.Mesh(geometry, material);
+                        break;
+                        
+                    case 2:
+                        // Cone
+                        geometry = new THREE.ConeGeometry(0.5, 1.5, 8);
+                        material = new THREE.MeshPhongMaterial({ 
+                            color: 0x4444ff,
+                            transparent: true,
+                            opacity: 0.8
+                        });
+                        mesh = new THREE.Mesh(geometry, material);
+                        break;
+                        
+                    case 3:
+                        // Torus
+                        geometry = new THREE.TorusGeometry(0.6, 0.2, 8, 24);
+                        material = new THREE.MeshPhongMaterial({ 
+                            color: 0xffff44,
+                            transparent: true,
+                            opacity: 0.8
+                        });
+                        mesh = new THREE.Mesh(geometry, material);
+                        break;
+                }
+                
+                mesh.position.set(0, 0, 0);
+                anchor.group.add(mesh);
+                
+                targetObjects.push({
+                    anchor: anchor,
+                    mesh: mesh,
+                    detected: false
+                });
+            }
+        }
+
+        // Animation loop
+        function animate() {
+            if (!isARRunning) return;
+            
+            requestAnimationFrame(animate);
+            
+            // Animate objects
+            targetObjects.forEach((obj, index) => {
+                if (obj.mesh) {
+                    // Different animations for different objects
+                    switch (index % 4) {
+                        case 0:
+                            obj.mesh.rotation.x += 0.01;
+                            obj.mesh.rotation.y += 0.02;
+                            break;
+                        case 1:
+                            obj.mesh.rotation.y += 0.015;
+                            break;
+                        case 2:
+                            obj.mesh.rotation.z += 0.02;
+                            break;
+                        case 3:
+                            obj.mesh.rotation.x += 0.01;
+                            obj.mesh.rotation.z += 0.01;
+                            break;
+                    }
+                }
+            });
+            
+            renderer.render(scene, camera);
+        }
+
+        // Handle file input
+        document.getElementById('fileInput').addEventListener('change', function(event) {
+            const file = event.target.files[0];
+            if (file && file.name.endsWith('.mind')) {
+                targetsFile = file;
+                updateStatus('File targets.mind berhasil dimuat - Klik Mulai AR');
+                document.getElementById('startButton').disabled = false;
+            } else {
+                alert('Mohon pilih file dengan ekstensi .mind');
+                updateStatus('Error: File harus berformat .mind');
+            }
+        });
+
+        // Start AR
+        async function startAR() {
+            if (!targetsFile) {
+                alert('Mohon upload file targets.mind terlebih dahulu');
+                return;
+            }
+            
+            try {
+                showLoading();
+                updateStatus('Memulai AR...');
+                
+                // Initialize scene
+                initScene();
+                document.getElementById('container').appendChild(renderer.domElement);
+                
+                // Create file URL for MindAR
+                const targetsURL = URL.createObjectURL(targetsFile);
+                
+                // Initialize MindAR
+                mindarThree = new window.MINDAR.IMAGE.MindARThree({
+                    container: document.getElementById('container'),
+                    imageTargetSrc: targetsURL,
+                    maxTrack: 3, // Track up to 3 targets simultaneously
+                    warmupTolerance: 5,
+                    missTolerance: 5
+                });
+                
+                const { renderer: arRenderer, scene: arScene, camera: arCamera } = mindarThree;
+                
+                // Use MindAR's renderer, scene, and camera
+                renderer = arRenderer;
+                scene = arScene;
+                camera = arCamera;
+                
+                // Add lighting to MindAR scene
+                const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+                scene.add(ambientLight);
+                
+                const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+                directionalLight.position.set(0, 10, 5);
+                scene.add(directionalLight);
+                
+                await mindarThree.start();
+                
+                // Get number of targets from the mind file
+                // Since we can't directly read the mind file structure, we'll assume common targets
+                const numTargets = 4; // Adjust based on your targets.mind file
+                createTargetObjects(numTargets);
+                
+                // Set up target detection events
+                targetObjects.forEach((obj, index) => {
+                    obj.anchor.onTargetFound = () => {
+                        obj.detected = true;
+                        updateTargetCount();
+                        console.log(`Target ${index} found`);
+                    };
+                    
+                    obj.anchor.onTargetLost = () => {
+                        obj.detected = false;
+                        updateTargetCount();
+                        console.log(`Target ${index} lost`);
+                    };
+                });
+                
+                isARRunning = true;
+                animate();
+                
+                // Update UI
+                document.getElementById('startButton').style.display = 'none';
+                document.getElementById('stopButton').style.display = 'inline-block';
+                hideLoading();
+                updateStatus('AR Aktif - Arahkan kamera ke target');
+                
+            } catch (error) {
+                console.error('Error starting AR:', error);
+                hideLoading();
+                updateStatus('Error: Gagal memulai AR - ' + error.message);
+                alert('Gagal memulai AR. Pastikan file targets.mind valid dan browser mendukung WebRTC.');
+            }
+        }
+
+        // Stop AR
+        function stopAR() {
+            if (mindarThree) {
+                mindarThree.stop();
+                mindarThree = null;
+            }
+            
+            isARRunning = false;
+            targetObjects = [];
+            
+            // Remove renderer canvas
+            const canvas = document.querySelector('canvas');
+            if (canvas && canvas.parentNode) {
+                canvas.parentNode.removeChild(canvas);
+            }
+            
+            // Update UI
+            document.getElementById('startButton').style.display = 'inline-block';
+            document.getElementById('stopButton').style.display = 'none';
+            updateStatus('AR dihentikan - Siap untuk dimulai lagi');
+            updateTargetCount();
+        }
+
+        // Utility functions
+        function updateStatus(message) {
+            document.getElementById('statusText').textContent = message;
+        }
+
+        function updateTargetCount() {
+            const detectedCount = targetObjects.filter(obj => obj.detected).length;
+            document.getElementById('targetCount').textContent = detectedCount;
+        }
+
+        function showLoading() {
+            document.getElementById('loadingOverlay').classList.remove('hidden');
+        }
+
+        function hideLoading() {
+            document.getElementById('loadingOverlay').classList.add('hidden');
+        }
+
+        function hideInstructions() {
+            document.getElementById('instructions').style.display = 'none';
+        }
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            if (isARRunning && renderer && camera) {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            }
+        });
+
+        // Handle page unload
+        window.addEventListener('beforeunload', () => {
+            if (isARRunning) {
+                stopAR();
+            }
+        });
+
+        // Initialize
+        updateStatus('Siap - Upload file targets.mind untuk memulai');
+    </script>
+</body>
+</html>
