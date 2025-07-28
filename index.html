@@ -6,6 +6,7 @@
     <title>MindAR Image Tracking</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mind-ar/1.2.2/mindar-image-three.prod.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/examples/js/loaders/GLTFLoader.js"></script>
     <style>
         body {
             margin: 0;
@@ -32,13 +33,13 @@
             color: white;
         }
         
-        #fileInput {
+        #modelStatus {
             margin: 10px 0;
             padding: 8px;
-            border: none;
+            background: rgba(76, 175, 80, 0.2);
             border-radius: 5px;
-            background: #333;
-            color: white;
+            color: #4CAF50;
+            font-size: 12px;
         }
         
         #startButton, #stopButton {
@@ -146,10 +147,11 @@
             <h2>🎯 MindAR Image Tracking</h2>
             <p><strong>Cara Penggunaan:</strong></p>
             <ul>
-                <li>Upload file <code>targets.mind</code> Anda</li>
+                <li>Model 3D aqua.glb sudah terintegrasi</li>
+                <li>File targets.mind sudah built-in</li>
                 <li>Klik "Mulai AR" untuk memulai tracking</li>
                 <li>Arahkan kamera ke gambar target</li>
-                <li>Objek 3D akan muncul di atas target</li>
+                <li>Model Aqua akan muncul di atas target</li>
             </ul>
             <p><em>Pastikan lighting cukup dan target gambar terlihat jelas.</em></p>
             <button onclick="hideInstructions()" style="background: #4CAF50; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; margin-top: 15px;">Mengerti</button>
@@ -157,9 +159,8 @@
         
         <div id="controls">
             <h3 style="margin: 0 0 10px 0; color: #4CAF50;">🔧 Kontrol AR</h3>
-            <div>
-                <label for="fileInput" style="display: block; margin-bottom: 5px;">Upload targets.mind:</label>
-                <input type="file" id="fileInput" accept=".mind" />
+            <div id="modelStatus">
+                Model: aqua.glb | Target: Built-in
             </div>
             <div>
                 <button id="startButton" onclick="startAR()">🚀 Mulai AR</button>
@@ -168,8 +169,9 @@
         </div>
         
         <div id="status">
-            <div>Status: <span id="statusText">Siap - Upload file targets.mind</span></div>
+            <div>Status: <span id="statusText">Siap - Klik Mulai AR</span></div>
             <div>Target Terdeteksi: <span id="targetCount">0</span></div>
+            <div>Model: <span id="modelLoadStatus">Standby</span></div>
         </div>
     </div>
 
@@ -178,9 +180,16 @@
         let scene, camera, renderer;
         let targetObjects = [];
         let isARRunning = false;
-        let targetsFile = null;
+        let aquaModel = null;
+        let gltfLoader = null;
+        
+        // Path configurations
+        const ASSETS_PATH = {
+            model: './assets/models/aqua.glb',
+            targets: './assets/targets/targets.mind'
+        };
 
-        // Initialize Three.js scene
+        // Initialize Three.js scene and GLTF loader
         function initScene() {
             scene = new THREE.Scene();
             camera = new THREE.PerspectiveCamera(
@@ -198,79 +207,96 @@
             renderer.setPixelRatio(window.devicePixelRatio);
             renderer.setClearColor(0x000000, 0);
             
+            // Initialize GLTF Loader
+            gltfLoader = new THREE.GLTFLoader();
+            
             // Add lighting
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
             scene.add(ambientLight);
             
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-            directionalLight.position.set(0, 10, 5);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
+            directionalLight.position.set(5, 10, 5);
+            directionalLight.castShadow = true;
             scene.add(directionalLight);
         }
 
-        // Create 3D objects for each target
+        // Load Aqua 3D model
+        async function loadAquaModel() {
+            return new Promise((resolve, reject) => {
+                updateModelLoadStatus('Loading...');
+                
+                gltfLoader.load(
+                    ASSETS_PATH.model,
+                    (gltf) => {
+                        aquaModel = gltf.scene;
+                        
+                        // Scale and position the model
+                        aquaModel.scale.set(0.5, 0.5, 0.5);
+                        aquaModel.position.set(0, 0, 0);
+                        
+                        // Enable shadows if needed
+                        aquaModel.traverse((child) => {
+                            if (child.isMesh) {
+                                child.castShadow = true;
+                                child.receiveShadow = true;
+                            }
+                        });
+                        
+                        updateModelLoadStatus('Loaded');
+                        console.log('Aqua model loaded successfully');
+                        resolve(aquaModel);
+                    },
+                    (progress) => {
+                        const percent = Math.round((progress.loaded / progress.total) * 100);
+                        updateModelLoadStatus(`Loading ${percent}%`);
+                    },
+                    (error) => {
+                        console.error('Error loading Aqua model:', error);
+                        updateModelLoadStatus('Error');
+                        reject(error);
+                    }
+                );
+            });
+        }
+
+        // Create Aqua model instances for each target
         function createTargetObjects(numTargets) {
             targetObjects = [];
             
             for (let i = 0; i < numTargets; i++) {
                 const anchor = mindarThree.addAnchor(i);
                 
-                // Create different objects for each target
-                let geometry, material, mesh;
-                
-                switch (i % 4) {
-                    case 0:
-                        // Rotating cube
-                        geometry = new THREE.BoxGeometry(1, 1, 1);
-                        material = new THREE.MeshPhongMaterial({ 
-                            color: 0xff4444,
-                            transparent: true,
-                            opacity: 0.8
-                        });
-                        mesh = new THREE.Mesh(geometry, material);
-                        break;
-                        
-                    case 1:
-                        // Sphere
-                        geometry = new THREE.SphereGeometry(0.6, 32, 32);
-                        material = new THREE.MeshPhongMaterial({ 
-                            color: 0x44ff44,
-                            transparent: true,
-                            opacity: 0.8
-                        });
-                        mesh = new THREE.Mesh(geometry, material);
-                        break;
-                        
-                    case 2:
-                        // Cone
-                        geometry = new THREE.ConeGeometry(0.5, 1.5, 8);
-                        material = new THREE.MeshPhongMaterial({ 
-                            color: 0x4444ff,
-                            transparent: true,
-                            opacity: 0.8
-                        });
-                        mesh = new THREE.Mesh(geometry, material);
-                        break;
-                        
-                    case 3:
-                        // Torus
-                        geometry = new THREE.TorusGeometry(0.6, 0.2, 8, 24);
-                        material = new THREE.MeshPhongMaterial({ 
-                            color: 0xffff44,
-                            transparent: true,
-                            opacity: 0.8
-                        });
-                        mesh = new THREE.Mesh(geometry, material);
-                        break;
+                // Clone the Aqua model for this target
+                if (aquaModel) {
+                    const modelClone = aquaModel.clone();
+                    
+                    // Add slight variations for different targets
+                    const hue = (i * 60) % 360; // Different colors for each target
+                    const rotationOffset = i * Math.PI / 4; // Different rotations
+                    
+                    modelClone.traverse((child) => {
+                        if (child.isMesh && child.material) {
+                            // Create a new material with different hue
+                            const material = child.material.clone();
+                            if (material.color) {
+                                material.color.setHSL(hue / 360, 0.7, 0.6);
+                            }
+                            child.material = material;
+                        }
+                    });
+                    
+                    modelClone.rotation.y = rotationOffset;
+                    anchor.group.add(modelClone);
+                    
+                    targetObjects.push({
+                        anchor: anchor,
+                        model: modelClone,
+                        detected: false,
+                        rotationOffset: rotationOffset
+                    });
+                } else {
+                    console.warn(`Aqua model not loaded for target ${i}`);
                 }
-                
-                mesh.position.set(0, 0, 0);
-                anchor.group.add(mesh);
-                
-                targetObjects.push({
-                    anchor: anchor,
-                    mesh: mesh,
-                    detected: false
-                });
             }
         }
 
@@ -280,52 +306,27 @@
             
             requestAnimationFrame(animate);
             
-            // Animate objects
+            // Animate Aqua models
             targetObjects.forEach((obj, index) => {
-                if (obj.mesh) {
-                    // Different animations for different objects
-                    switch (index % 4) {
-                        case 0:
-                            obj.mesh.rotation.x += 0.01;
-                            obj.mesh.rotation.y += 0.02;
-                            break;
-                        case 1:
-                            obj.mesh.rotation.y += 0.015;
-                            break;
-                        case 2:
-                            obj.mesh.rotation.z += 0.02;
-                            break;
-                        case 3:
-                            obj.mesh.rotation.x += 0.01;
-                            obj.mesh.rotation.z += 0.01;
-                            break;
-                    }
+                if (obj.model && obj.detected) {
+                    // Gentle floating animation
+                    const time = Date.now() * 0.001;
+                    obj.model.position.y = Math.sin(time + index) * 0.1;
+                    
+                    // Slow rotation
+                    obj.model.rotation.y = obj.rotationOffset + time * 0.2;
+                    
+                    // Subtle scale pulsing
+                    const scale = 0.5 + Math.sin(time * 2 + index) * 0.05;
+                    obj.model.scale.set(scale, scale, scale);
                 }
             });
             
             renderer.render(scene, camera);
         }
 
-        // Handle file input
-        document.getElementById('fileInput').addEventListener('change', function(event) {
-            const file = event.target.files[0];
-            if (file && file.name.endsWith('.mind')) {
-                targetsFile = file;
-                updateStatus('File targets.mind berhasil dimuat - Klik Mulai AR');
-                document.getElementById('startButton').disabled = false;
-            } else {
-                alert('Mohon pilih file dengan ekstensi .mind');
-                updateStatus('Error: File harus berformat .mind');
-            }
-        });
-
         // Start AR
         async function startAR() {
-            if (!targetsFile) {
-                alert('Mohon upload file targets.mind terlebih dahulu');
-                return;
-            }
-            
             try {
                 showLoading();
                 updateStatus('Memulai AR...');
@@ -334,13 +335,15 @@
                 initScene();
                 document.getElementById('container').appendChild(renderer.domElement);
                 
-                // Create file URL for MindAR
-                const targetsURL = URL.createObjectURL(targetsFile);
+                // Load Aqua model first
+                updateStatus('Memuat model Aqua...');
+                await loadAquaModel();
                 
-                // Initialize MindAR
+                // Initialize MindAR with built-in targets
+                updateStatus('Menginisialisasi MindAR...');
                 mindarThree = new window.MINDAR.IMAGE.MindARThree({
                     container: document.getElementById('container'),
-                    imageTargetSrc: targetsURL,
+                    imageTargetSrc: ASSETS_PATH.targets,
                     maxTrack: 3, // Track up to 3 targets simultaneously
                     warmupTolerance: 5,
                     missTolerance: 5
@@ -354,17 +357,18 @@
                 camera = arCamera;
                 
                 // Add lighting to MindAR scene
-                const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+                const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
                 scene.add(ambientLight);
                 
-                const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-                directionalLight.position.set(0, 10, 5);
+                const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
+                directionalLight.position.set(5, 10, 5);
+                directionalLight.castShadow = true;
                 scene.add(directionalLight);
                 
+                updateStatus('Memulai tracking...');
                 await mindarThree.start();
                 
-                // Get number of targets from the mind file
-                // Since we can't directly read the mind file structure, we'll assume common targets
+                // Create target objects with Aqua models
                 const numTargets = 4; // Adjust based on your targets.mind file
                 createTargetObjects(numTargets);
                 
@@ -373,13 +377,13 @@
                     obj.anchor.onTargetFound = () => {
                         obj.detected = true;
                         updateTargetCount();
-                        console.log(`Target ${index} found`);
+                        console.log(`Target ${index} found - Aqua model visible`);
                     };
                     
                     obj.anchor.onTargetLost = () => {
                         obj.detected = false;
                         updateTargetCount();
-                        console.log(`Target ${index} lost`);
+                        console.log(`Target ${index} lost - Aqua model hidden`);
                     };
                 });
                 
@@ -396,7 +400,15 @@
                 console.error('Error starting AR:', error);
                 hideLoading();
                 updateStatus('Error: Gagal memulai AR - ' + error.message);
-                alert('Gagal memulai AR. Pastikan file targets.mind valid dan browser mendukung WebRTC.');
+                updateModelLoadStatus('Error');
+                
+                if (error.message.includes('targets.mind')) {
+                    alert('File targets.mind tidak ditemukan. Pastikan file berada di ./assets/targets/targets.mind');
+                } else if (error.message.includes('aqua.glb')) {
+                    alert('Model aqua.glb tidak ditemukan. Pastikan file berada di ./assets/models/aqua.glb');
+                } else {
+                    alert('Gagal memulai AR. Pastikan semua file asset tersedia dan browser mendukung WebRTC.');
+                }
             }
         }
 
