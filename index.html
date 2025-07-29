@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>MindAR Interaktif Aqua</title>
+    <title>MindAR Interaktif Konosuba Aqua - Ahsan Project</title>
 
     <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
@@ -42,40 +42,38 @@
 
         <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
-        <a-entity id="ar-target" mindar-image-target="targetIndex: 0">
-            <a-plane src="#card" position="0 -0.50 0" height="1" width="1" rotation="0 0 0"></a-plane>
-            <a-gltf-model rotation="0 0 0 " position="0 0 0" scale="1 1 1" src="#avatarModel" animation-mixer></a-gltf-model>
-            
-            <a-sound src="#my-sound"></a-sound>
-        </a-entity>
+<a-entity id="ar-target" mindar-image-target="targetIndex: 0">
+  <a-plane src="#card" position="0 -0.50 0" height="1" width="1" rotation="0 0 0"></a-plane>
+  <a-gltf-model rotation="0 0 0" position="0 0 0" scale="1 1 1" src="#avatarModel" animation-mixer></a-gltf-model>
+  <a-sound id="sound-player" src="#my-sound" autoplay="false",loop="true" ,positional="false"></a-sound>
+</a-entity>
+        
+
     </a-scene>
 
     <script>
-        document.addEventListener("DOMContentLoaded", () => {
-            const startOverlay = document.querySelector("#start-overlay");
-            const sceneEl = document.querySelector("a-scene");
-            const arTarget = document.querySelector("#ar-target");
+document.addEventListener("DOMContentLoaded", () => {
+    const startOverlay = document.querySelector("#start-overlay");
+    const sceneEl = document.querySelector("a-scene");
+    const arTarget = document.querySelector("#ar-target");
+    const soundPlayer = document.querySelector("#sound-player");
 
-            // Ketika overlay disentuh
-            startOverlay.addEventListener('click', () => {
-                startOverlay.style.display = 'none'; // Sembunyikan overlay
+    startOverlay.addEventListener('click', () => {
+        startOverlay.style.display = 'none';
+        sceneEl.systems['mindar-image-system'].start();
+    }, { once: true });
 
-                // Memulai sistem AR secara manual
-                sceneEl.systems['mindar-image-system'].start();
-            }, { once: true });
+    arTarget.addEventListener("targetFound", () => {
+        console.log("✅ Target ditemukan, audio diputar");
+        soundPlayer.components.sound.playSound();
+    });
 
-            // Ketika target ditemukan...
-            arTarget.addEventListener("targetFound", () => {
-                console.log("✅ Target ditemukan, audio diputar");
-                arTarget.components.sound.playSound();
-            });
+    arTarget.addEventListener("targetLost", () => {
+        console.log("❌ Target hilang, audio dijeda");
+        soundPlayer.components.sound.pauseSound();
+    });
+});
 
-            // Ketika target hilang...
-            arTarget.addEventListener("targetLost", () => {
-                console.log("❌ Target hilang, audio dijeda");
-                arTarget.components.sound.pauseSound();
-            });
-        });
     </script>
 
 </body>
