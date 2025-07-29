@@ -2,13 +2,13 @@
 <html>
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>MindAR Interaktif Konosuba Aqua - Ahsan Project</title>
+    <title>MindAR Interaktif Aqua</title>
 
+    <!-- A-Frame dan MindAR -->
     <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
 
     <style>
-        /* CSS untuk layar overlay "Sentuh untuk Memulai" */
         #start-overlay {
             position: absolute;
             top: 0; left: 0;
@@ -28,12 +28,20 @@
 </head>
 <body>
 
+    <!-- Overlay untuk memulai -->
     <div id="start-overlay">
         <p>Sentuh Layar untuk Memulai</p>
     </div>
 
-    <a-scene mindar-image="imageTargetSrc: ./targets.mind; autoStart: false;" color-space="sRGB" renderer="colorManagement: true, physicallyCorrectLights" vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
-        
+    <!-- AR Scene -->
+    <a-scene
+        mindar-image="imageTargetSrc: ./targets.mind; autoStart: false;"
+        color-space="sRGB"
+        renderer="colorManagement: true, physicallyCorrectLights"
+        vr-mode-ui="enabled: false"
+        device-orientation-permission-ui="enabled: false"
+        embedded
+    >
         <a-assets>
             <img id="card" src="./konosuba.webp" />
             <a-asset-item id="avatarModel" src="./aqua.gltf"></a-asset-item>
@@ -42,38 +50,59 @@
 
         <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
-<a-entity id="ar-target" mindar-image-target="targetIndex: 0">
-  <a-plane src="#card" position="0 -0.50 0" height="1" width="1" rotation="0 0 0"></a-plane>
-  <a-gltf-model rotation="0 0 0" position="0 0 0" scale="1 1 1" src="#avatarModel" animation-mixer></a-gltf-model>
-  <a-sound id="sound-player" src="#my-sound" autoplay="false",loop="true" ,positional="false"></a-sound>
-</a-entity>
-        
-
+        <!-- Target AR -->
+        <a-entity id="ar-target" mindar-image-target="targetIndex: 0">
+            <a-plane src="#card" position="0 -0.5 0" height="1" width="1"></a-plane>
+            <a-gltf-model src="#avatarModel" position="0 0 0" scale="1 1 1" animation-mixer></a-gltf-model>
+            <a-sound id="sound-player" src="#my-sound" autoplay="false" loop="true" positional="false" volume="1"></a-sound>
+        </a-entity>
     </a-scene>
 
     <script>
-document.addEventListener("DOMContentLoaded", () => {
-    const startOverlay = document.querySelector("#start-overlay");
-    const sceneEl = document.querySelector("a-scene");
-    const arTarget = document.querySelector("#ar-target");
-    const soundPlayer = document.querySelector("#sound-player");
+        document.addEventListener("DOMContentLoaded", () => {
+            const startOverlay = document.querySelector("#start-overlay");
+            const sceneEl = document.querySelector("a-scene");
+            const arTarget = document.querySelector("#ar-target");
+            const soundPlayer = document.querySelector("#sound-player");
+            const audioElement = document.querySelector("#my-sound");
 
-    startOverlay.addEventListener('click', () => {
-        startOverlay.style.display = 'none';
-        sceneEl.systems['mindar-image-system'].start();
-    }, { once: true });
+            // Check apakah audio siap dimainkan
+            audioElement.addEventListener("canplaythrough", () => {
+                console.log("🎵 Audio siap diputar");
+            });
 
-    arTarget.addEventListener("targetFound", () => {
-        console.log("✅ Target ditemukan, audio diputar");
-        soundPlayer.components.sound.playSound();
-    });
+            audioElement.addEventListener("error", () => {
+                console.log("❌ Audio gagal dimuat");
+            });
 
-    arTarget.addEventListener("targetLost", () => {
-        console.log("❌ Target hilang, audio dijeda");
-        soundPlayer.components.sound.pauseSound();
-    });
-});
+            // Ketika overlay diklik
+            startOverlay.addEventListener("click", () => {
+                startOverlay.style.display = "none";
 
+                // "Memanaskan" audio agar browser izinkan
+                soundPlayer.components.sound.playSound();
+                soundPlayer.components.sound.pauseSound();
+
+                // Start AR
+                sceneEl.systems["mindar-image-system"].start();
+            }, { once: true });
+
+            // Ketika target ditemukan
+            arTarget.addEventListener("targetFound", () => {
+                console.log("✅ Target ditemukan, audio diputar");
+                if (soundPlayer.components.sound) {
+                    soundPlayer.components.sound.playSound();
+                }
+            });
+
+            // Ketika target hilang
+            arTarget.addEventListener("targetLost", () => {
+                console.log("❌ Target hilang, audio dijeda");
+                if (soundPlayer.components.sound) {
+                    soundPlayer.components.sound.pauseSound();
+                }
+            });
+        });
     </script>
 
 </body>
