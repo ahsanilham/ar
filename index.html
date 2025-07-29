@@ -4,7 +4,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>MindAR Interaktif Aqua</title>
 
-    <!-- A-Frame dan MindAR -->
     <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
 
@@ -28,12 +27,10 @@
 </head>
 <body>
 
-    <!-- Overlay untuk memulai -->
     <div id="start-overlay">
         <p>Sentuh Layar untuk Memulai</p>
     </div>
 
-    <!-- AR Scene -->
     <a-scene
         mindar-image="imageTargetSrc: ./targets.mind; autoStart: false;"
         color-space="sRGB"
@@ -50,7 +47,6 @@
 
         <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
-        <!-- Target AR -->
         <a-entity id="ar-target" mindar-image-target="targetIndex: 0">
             <a-plane src="#card" position="0 -0.5 0" height="1" width="1"></a-plane>
             <a-gltf-model src="#avatarModel" position="0 0 0" scale="1 1 1" animation-mixer></a-gltf-model>
@@ -64,30 +60,26 @@
             const sceneEl = document.querySelector("a-scene");
             const arTarget = document.querySelector("#ar-target");
             const soundPlayer = document.querySelector("#sound-player");
-            const audioElement = document.querySelector("#my-sound");
 
-            // Check apakah audio siap dimainkan
-            audioElement.addEventListener("canplaythrough", () => {
-                console.log("🎵 Audio siap diputar");
-            });
-
-            audioElement.addEventListener("error", () => {
-                console.log("❌ Audio gagal dimuat");
-            });
-
-            // Ketika overlay diklik
             startOverlay.addEventListener("click", () => {
                 startOverlay.style.display = "none";
 
-                // "Memanaskan" audio agar browser izinkan
-                soundPlayer.components.sound.playSound();
-                soundPlayer.components.sound.pauseSound();
+                // Step penting: paksa browser "membuka" izin audio
+                const unlockAudio = () => {
+                    try {
+                        soundPlayer.components.sound.playSound();
+                        soundPlayer.components.sound.pauseSound();
+                        console.log("🔓 Audio unlocked dengan klik user");
+                    } catch (e) {
+                        console.warn("⚠️ Gagal unlock audio:", e);
+                    }
+                };
 
-                // Start AR
+                unlockAudio();
+
                 sceneEl.systems["mindar-image-system"].start();
             }, { once: true });
 
-            // Ketika target ditemukan
             arTarget.addEventListener("targetFound", () => {
                 console.log("✅ Target ditemukan, audio diputar");
                 if (soundPlayer.components.sound) {
@@ -95,7 +87,6 @@
                 }
             });
 
-            // Ketika target hilang
             arTarget.addEventListener("targetLost", () => {
                 console.log("❌ Target hilang, audio dijeda");
                 if (soundPlayer.components.sound) {
